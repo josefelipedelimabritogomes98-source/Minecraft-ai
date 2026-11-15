@@ -1,0 +1,30 @@
+name: Fabrica Autonoma Minecraft
+on:
+  schedule:
+    - cron: '0 * * * *' # Acorda a IA e a Vigilancia a cada 1 hora
+  workflow_dispatch: # Botao manual para voce iniciar agora
+
+jobs:
+  construir_e_vigiar:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Instalar navegador de vigilancia
+        run: npm install playwright && npx playwright install chromium
+      - name: Executar IA e Vigilancia
+        run: node agente.js
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - name: Salvar versao atualizada
+        run: |
+          git config user.name "Robo Dev"
+          git config user.email "robo@github.com"
+          git add index.html status_vigilancia.txt
+          git commit -m "Ciclo automatico: codigo e vigilancia" || exit 0
+          git push
+          
