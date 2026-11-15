@@ -1,8 +1,8 @@
 name: Fabrica Autonoma Minecraft
 on:
   schedule:
-    - cron: '0 * * * *' # Acorda a IA e a Vigilancia a cada 1 hora
-  workflow_dispatch: # Botao manual para voce iniciar agora
+    - cron: '0 * * * *'
+  workflow_dispatch:
 
 jobs:
   construir_e_vigiar:
@@ -14,6 +14,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Baixar motor 3D offline
+        run: curl -sL https://cloudflare.com -o three.min.js
       - name: Instalar navegador de vigilancia
         run: npm install playwright && npx playwright install chromium
       - name: Executar IA e Vigilancia
@@ -24,7 +26,7 @@ jobs:
         run: |
           git config user.name "Robo Dev"
           git config user.email "robo@github.com"
-          git add index.html status_vigilancia.txt
+          git add index.html three.min.js status_vigilancia.txt
           git commit -m "Ciclo automatico: codigo e vigilancia" || exit 0
           git push
           
