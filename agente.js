@@ -3,15 +3,18 @@ const { chromium } = require('playwright');
 
 async function trabalhar() {
   const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.error('ERRO: GEMINI_API_KEY nao encontrada nos Secrets!');
+    process.exit(1);
+  }
+
   const promptBase = fs.readFileSync('prompt.txt', 'utf8');
   let codigoAtual = fs.existsSync('index.html') ? fs.readFileSync('index.html', 'utf8') : '';
   let relatorioVigilancia = 'Primeira execucao. Crie a estrutura base completa do jogo.';
 
-  // === SISTEMA DE VIGILÂNCIA (TESTA O JOGO ANTES DE MANDAR PARA A IA) ===
   if (codigoAtual.length > 500) {
     console.log('Iniciando vigilancia no navegador...');
     const browser = await chromium.launch();
-    // Simula a tela e memoria de um celular antigo
     const context = await browser.newContext({ viewport: { width: 800, height: 360 }, isMobile: true });
     const page = await context.newPage();
     
@@ -21,17 +24,15 @@ async function trabalhar() {
       if (msg.type() === 'error') erros.push('ERRO CONSOLE: ' + msg.text());
     });
 
-    await page.goto('file://' + process.cwd() + '/index.html', { waitUntil: 'networkidle' });
+    await page.goto('file://' + process.cwd() + '/index.html', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(3000);
 
-    // Tenta clicar no botao de Jogar para testar se o mundo 3D abre sem travar
     try {
       const botoes = await page.locator('button').all();
       if (botoes.length > 0) await botoes[0].click({ timeout: 2000 });
       await page.waitForTimeout(3000);
     } catch (e) {}
 
-    // Verifica se o canvas 3D foi criado na tela
     const temCanvas = await page.evaluate(() => document.querySelector('canvas') !== null);
     if (!temCanvas) erros.push('FALHA VISUAL: Nenhum elemento <canvas> WebGL foi renderizado na tela.');
 
@@ -40,12 +41,11 @@ async function trabalhar() {
     if (erros.length > 0) {
       relatorioVigilancia = 'ALERTA DA VIGILANCIA - CORRIJA ESTES BUGS IMEDIATAMENTE:\n' + erros.join('\n');
     } else {
-      relatorioVigilancia = 'VIGILANCIA OK: Zero erros no console e Canvas 3D ativo. Agora adicione os itens, texturas, mobs ou menus que ainda faltam na lista obrigatória.';
+      relatorioVigilancia = 'VIGILANCIA OK: Zero erros no console e Canvas 3D ativo. Continue adicionando os itens, texturas, mobs e menus que faltam.';
     }
     console.log(relatorioVigilancia);
   }
 
-  // === ENVIA PARA A IA PROGRAMAR / CORRIGIR ===
   const promptFinal = `${promptBase}\n\n=== RELATÓRIO DA VIGILÂNCIA ===\n${relatorioVigilancia}\n\n=== CÓDIGO ATUAL (index.html) ===\n${codigoAtual || 'Vazio. Comece do zero.'}`;
 
   const resposta = await fetch(`https://googleapis.com{apiKey}`, {
@@ -64,7 +64,6 @@ async function trabalhar() {
   }
 
   let novoHtml = dados.candidates[0].content.parts[0].text;
-  // Limpa marcacoes de markdown caso a IA envie
   novoHtml = novoHtml.replace(/^```html\s*/i, '').replace(/```\s*$/i, '').trim();
 
   if (novoHtml.includes('<!DOCTYPE html>') && novoHtml.includes('</html>')) {
@@ -72,7 +71,7 @@ async function trabalhar() {
     fs.writeFileSync('status_vigilancia.txt', `Ultima atualizacao: ${new Date().toISOString()}\nStatus: ${relatorioVigilancia}`);
     console.log('Novo index.html salvo com sucesso!');
   } else {
-    console.log('Codigo veio incompleto, mantendo versao anterior para nao quebrar o jogo.');
+    console.log('Codigo veio incompleto, mantendo versao anterior.');
   }
 }
 
