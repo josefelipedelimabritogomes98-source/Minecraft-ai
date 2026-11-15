@@ -1,0 +1,77 @@
+ATUE COMO UM ARQUITETO PRINCIPAL DE MOTORES VOXEL E ENGENHEIRO DE PERFORMANCE WEBGL/MOBILE.
+Sua missão é desenvolver, iterar e aperfeiçoar uma recriação 100% fiel, completa e extrema em performance do MINECRAFT (Edição Bedrock / Mobile) em um ÚNICO arquivo `index.html` autônomo (HTML5, CSS3, JavaScript Vanilla ES6+ e Three.js r128 carregado localmente via `<script src="three.min.js"></script>` para rodar 100% OFFLINE sem internet).
+
+ALVO DE HARDWARE E FORMATO (RESTRIÇÃO ABSOLUTA):
+1. O jogo DEVE rodar a 60 FPS estáveis em smartphones antigos com apenas 2GB de RAM e GPU móvel básica (Mali-400 / Adreno 306), com ZERO vazamento de memória e ZERO travamentos.
+2. MODO PAISAGEM OBRIGATÓRIO (TELA DEITADA / LANDSCAPE) E PRONTO PARA APK:
+   - Configure `<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">`.
+   - Bloqueie o gesto de arrastar para atualizar (pull-to-refresh), zoom com pinça e menu de contexto ao segurar o dedo (`touch-action: none; user-select: none; -webkit-user-select: none;`).
+   - Ao clicar em "Jogar", tente ativar automaticamente Fullscreen (`document.documentElement.requestFullscreen()`) e travar a tela deitada (`screen.orientation.lock('landscape')`).
+   - Crie uma camada CSS `@media (orientation: portrait)` que exiba uma tela preta com ícone pixelado pedindo "VIRE O CELULAR PARA A POSIÇÃO DEITADA (PAISAGEM)" caso o aparelho esteja em pé.
+   - Compatibilidade total com Android WebView / APK (Capacitor / Cordova / Website2APK): não dependa de APIs bloqueadas em `file://` e trate erros de `localStorage` com fallback seguro em memória.
+
+================================================================================
+MODO DE EXECUÇÃO EM CICLOS (PARA O AGENTE AUTÔNOMO)
+================================================================================
+Se o arquivo `index.html` já existir, NÃO apague o que já funciona. Analise o código atual, corrija qualquer erro de console, verifique quais itens/mobs/mecânicas das listas abaixo ainda estão ausentes ou simplificados e implemente-os com perfeição até que 100% deste documento esteja cumprido. NUNCA use comentários como "// adicione o resto aqui" ou "// TODO". Escreva cada linha de código real.
+
+================================================================================
+REGRA 1: ARQUITETURA ZERO-LAG E CORREÇÃO DE BUGS DE RENDERIZAÇÃO (2GB RAM)
+================================================================================
+1. PROIBIDO SUMIR BLOCOS (FRUSTUM CULLING):
+   - Em TODOS os `THREE.InstancedMesh` do jogo, defina obrigatoriamente `mesh.frustumCulled = false;`. Nunca confie na BoundingSphere automática do Three.js para instâncias dinâmicas.
+2. DRAW CALLS MÍNIMOS E TEXTURAS LEVES:
+   - Agrupe rigorosamente os `InstancedMesh` por tipo de bloco usando `THREE.MeshLambertMaterial` (mais leve que Standard/PBR).
+   - Configure obrigatoriamente em todas as texturas: `texture.magFilter = THREE.NearestFilter; texture.minFilter = THREE.NearestFilter; texture.generateMipmaps = false;`.
+3. FACE CULLING RIGOROSO (OCLUSÃO DE FACES INTERNAS):
+   - O mundo é armazenado em um `Uint8Array(48 * 32 * 48)` (ocupa 8x menos RAM que arrays comuns).
+   - NUNCA renderize blocos cercados por outros blocos sólidos nas 6 direções (`+X, -X, +Y, -Y, +Z, -Z`). Apenas blocos com pelo menos 1 face voltada para Ar (`ID 0`) ou blocos transparentes (Água, Vidro, Folhas) entram no buffer de renderização.
+   - Ao quebrar ou colocar um bloco, recalcule imediatamente apenas o bloco alterado e seus 6 vizinhos diretos, atualizando `instancedMesh.count` e `instancedMesh.instanceMatrix.needsUpdate = true`.
+4. ZERO GARBAGE COLLECTION NO LOOP PRINCIPAL:
+   - Trave `renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25))` (ou `1` no modo desempenho).
+   - Desative sombras dinâmicas pesadas (`renderer.shadowMap.enabled = false`) e simule iluminação de blocos usando sombreamento direcional por face (topo 100% brilho, laterais X 80%, laterais Z 60%, fundo 50%) igual ao Minecraft clássico.
+   - Instancie TODOS os objetos auxiliares (`THREE.Vector3`, `THREE.Matrix4`, `THREE.Quaternion`, `THREE.Raycaster`, `THREE.Color`) FORA do `requestAnimationFrame` e reutilize-os.
+   - Use `THREE.Fog` na cor dinâmica do céu (Dia: `#78A7FF`, Pôr do sol: `#D97A4E`, Noite: `#0B0F19`) iniciando em `distMax * 0.65` e terminando em `distMax`.
+
+================================================================================
+REGRA 2: TEXTURAS PROCEDURAIS 16x16 PIXEL-EXACT DO MINECRAFT CLÁSSICO
+================================================================================
+Programe um gerador determinístico em Canvas 2D (16x16 pixels por face) reproduzindo fielmente a paleta e o padrão visual do Minecraft original:
+- Grama (Grass Block): Topo verde (`#59A63B`, `#4E9433`, `#67B846`); 4 laterais com base de terra (`#866043`, `#6E4E37`) e borda superior de grama verde pendendo em dentes irregulares de 2 a 5 pixels; fundo 100% terra.
+- Terra (Dirt): Marrom `#866043` com ruído granular `#6E4E37` e `#9B7251`.
+- Pedregulho (Cobblestone): Pedras irregulares `#7F7F7F` e `#9E9E9E` separadas por fissuras escuras `#525252`.
+- Pedra Lisa (Stone): Cinza `#7D7D7D` com estrias horizontais sutis `#707070` e `#8A8A8A`.
+- Tronco de Carvalho: Casca vertical riscada `#665132` e `#4C3B23` nas laterais; anéis concêntricos bege `#B8945F` e `#9C7A49` no topo/base.
+- Tábuas de Carvalho: 4 tábuas horizontais de 4px de altura (`#A2824E`, `#B4925A`) divididas por linhas escuras `#6D542E` com juntas verticais alternadas.
+- Folhas de Carvalho: Verde escuro vazado (`#3A7D23`, `#2B5E19`, `#49942E`) com pixels transparentes (`alphaTest: 0.5`).
+- Areia (`#DBD3A0`, `#CFC58E`) e Cascalho (`#857F7E`, `#6E6867`, `#9A9493`).
+- Minérios (Base exata de Pedra Lisa + veios pixelados nas cores oficiais): Carvão (`#1E1E1E`), Ferro (`#D8AF93`), Ouro (`#FCEE4B`), Diamante (`#5DECF5`), Redstone (`#FF1A1A`), Lápis-Lazúli (`#1C459A`).
+- Blocos Especiais: Vidro (borda `#C0E8FF`, centro transparente com 2 riscos diagonais brancos), Tijolos (`#965A48` com rejunte `#B5B5B5`), Lã Branca (`#EAEAEA`, `#DCDCDC`), Obsidiana (`#14121D` com manchas `#3B2754` e `#241936`), Bancada de Trabalho (grade 3x3 marrom escura no topo + serrote/martelo nas laterais), Fornalha (pedra com boca arqueada escura, que acende em laranja `#FF6A00` quando assando), Baú (madeira com borda escura e fecho prateado `#C8C8C8`), Cama (travesseiro branco e cobertor vermelho `#B02E26`), TNT (faixa branca central com letras "TNT" pretas e topo de dinamites), Tocha (haste de madeira com chama amarela/laranja).
+
+================================================================================
+REGRA 3: INTERFACE DE USUÁRIO (UI) E OPÇÕES IDÊNTICAS AO BEDROCK MOBILE
+================================================================================
+1. ESTÉTICA OFICIAL BEDROCK:
+   - Painéis cinza clássico `#C6C6C6`, borda externa preta `2px solid #000`, chanfro interno claro `#FFFFFF` (topo/esquerda) e sombra `#555555` (base/direita).
+   - Slots de inventário: fundo `#8B8B8B`, borda superior/esquerda `2px solid #373737`, borda inferior/direita `2px solid #FFFFFF`.
+   - Botões estilo Bedrock: fundo `#C6C6C6`, texto `#222222`; ao pressionar/ativar, mudam para verde oficial `#3C8527` com texto branco `#FFFFFF` e sombra pixelada `2px 2px 0px #1D4D13`.
+2. TELAS E MENUS (OTIMIZADOS PARA TELA DEITADA 16:9 / 20:9):
+   - Tela Inicial: Panorama 3D do mundo girando suavemente ao fundo, logo "MINECRAFT" em estilo pixelado 3D e botões grandes centralizados: "Jogar / Continuar", "Novo Mundo" e "Opções".
+   - HUD em Jogo: Botão de Pausa (`||`) no topo central; Hotbar de 9 slots na base central + botão `...` para abrir Inventário; acima da hotbar à esquerda: 10 Corações de Vida e barra de Armadura; acima da hotbar à direita: 10 Pernis de Fome.
+   - Menu de Pausa: "Continuar Jogo", "Opções" e "Salvar e Sair".
+3. MENU DE OPÇÕES FUNCIONAL (3 ABAS LATERAIS SALVAS NO LOCALSTORAGE):
+   - Aba GERAL: Sensibilidade da Câmera (10% a 100%), Tamanho dos Controles Touch (Pequeno 80%, Médio 100%, Grande 125%), Inverter Eixo Y (Sim/Não), Auto-Pulo (Sim/Não - pula automaticamente ao encostar em degrau de 1 bloco).
+   - Aba VÍDEO: Distância de Renderização (Curta 14, Normal 20, Longa 28 blocos), Campo de Visão / FOV (60° a 90°), Mostrar Contador de FPS/Coordenadas (Sim/Não), Balanço da Mão/Item (Sim/Não).
+   - Aba ÁUDIO (Sintetizador Web Audio API 100% procedural sem arquivos externos): Volume Geral (0-100%), Volume de Blocos/Passos (0-100%), Volume de Criaturas/Combate (0-100%). Gere sons reais de passos na grama/pedra, quebra de bloco, pop de coleta, dano, explosão de Creeper e clique de botão.
+
+================================================================================
+REGRA 4: CONTROLES MOBILE MODERNOS (JOYSTICK ANALÓGICO + TOQUE DIRETO)
+================================================================================
+PROIBIDO USAR SETAS EM CRUZ (D-PAD). Implemente exatamente o padrão moderno do Minecraft Mobile em tela deitada:
+1. Joystick Analógico Virtual (Canto Inferior Esquerdo): Base circular translúcida com pino interno móvel. Controla movimento em 360 graus; empurrar até a borda ativa corrida (Sprint) consumindo fome.
+2. Controle de Câmera e Toque na Tela: Arrastar o dedo na área livre gira a câmera suavemente com suporte a multi-touch real (andar com o polegar esquerdo e girar câmera com o polegar direito ao mesmo tempo).
+3. Botões de Ação Pixelados (Canto Inferior Direito):
+   - Botão Pular (Seta para cima) + nadar na água.
+   - Botão Agachar / Sneak (Ícone de boneco agachado - alterna estado, abaixa a câmera 0.25 blocos e IMPEDE o jogador de cair da borda de blocos elevados).
+   - Botão Quebrar / Atacar (Ícone de picareta/espada - segurar inicia quebra progressiva com overlay de 10 estágios de rachadura no bloco).
+   
