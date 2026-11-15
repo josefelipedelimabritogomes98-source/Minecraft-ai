@@ -29,7 +29,7 @@ async function trabalhar() {
 
     try {
       const botoes = await page.locator('button').all();
-      if (botoes.length > 0) await botoes[0].click({ timeout: 2000 });
+      if (botoes.length > 0) await botoes.at(0).click({ timeout: 2000 });
       await page.waitForTimeout(3000);
     } catch (e) {}
 
@@ -48,7 +48,9 @@ async function trabalhar() {
 
   const promptFinal = `${promptBase}\n\n=== RELATÓRIO DA VIGILÂNCIA ===\n${relatorioVigilancia}\n\n=== CÓDIGO ATUAL (index.html) ===\n${codigoAtual || 'Vazio. Comece do zero.'}`;
 
-  const resposta = await fetch(`https://googleapis.com{apiKey}`, {
+  const url = 'https://googleapis.com' + apiKey.trim();
+
+  const resposta = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -58,12 +60,15 @@ async function trabalhar() {
   });
 
   const dados = await resposta.json();
-  if (!dados.candidates || !dados.candidates[0]) {
-    console.error('Erro na API:', JSON.stringify(dados));
+  const primeiroCandidato = dados && dados.candidates ? dados.candidates.at(0) : null;
+  const primeiraParte = primeiroCandidato && primeiroCandidato.content && primeiroCandidato.content.parts ? primeiroCandidato.content.parts.at(0) : null;
+
+  if (!primeiraParte || !primeiraParte.text) {
+    console.error('Erro na resposta da API:', JSON.stringify(dados));
     process.exit(1);
   }
 
-  let novoHtml = dados.candidates[0].content.parts[0].text;
+  let novoHtml = primeiraParte.text;
   novoHtml = novoHtml.replace(/^```html\s*/i, '').replace(/```\s*$/i, '').trim();
 
   if (novoHtml.includes('<!DOCTYPE html>') && novoHtml.includes('</html>')) {
@@ -76,4 +81,4 @@ async function trabalhar() {
 }
 
 trabalhar();
-    
+                                     
