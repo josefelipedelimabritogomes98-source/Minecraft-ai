@@ -54,8 +54,8 @@ async function trabalhar() {
 
   for (const modelo of modelos) {
     console.log('Conectando ao modelo:', modelo);
-    const url = `https://googleapis.com{modelo}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    
+    const url = 'https://googleapis.com' + modelo + ':generateContent?key=' + apiKey;
+ 
     const resposta = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
