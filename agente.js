@@ -48,9 +48,10 @@ async function trabalhar() {
 
   const promptFinal = `${promptBase}\n\n=== RELATÓRIO DA VIGILÂNCIA ===\n${relatorioVigilancia}\n\n=== CÓDIGO ATUAL (index.html) ===\n${codigoAtual || 'Vazio. Comece do zero.'}`;
 
-  const url = 'https://googleapis.com' + apiKey.trim();
+  const endpoint = new URL('https://googleapis.com');
+  endpoint.searchParams.set('key', apiKey.trim());
 
-  const resposta = await fetch(url, {
+  const resposta = await fetch(endpoint.toString(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -81,4 +82,4 @@ async function trabalhar() {
 }
 
 trabalhar();
-                                     
+      
