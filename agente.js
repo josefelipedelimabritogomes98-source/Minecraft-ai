@@ -2,7 +2,7 @@ const fs = require('fs');
 const { chromium } = require('playwright');
 
 async function trabalhar() {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = (process.env.GEMINI_API_KEY || '').trim();
   if (!apiKey) {
     console.error('ERRO: GEMINI_API_KEY nao encontrada nos Secrets!');
     process.exit(1);
@@ -48,29 +48,42 @@ async function trabalhar() {
 
   const promptFinal = `${promptBase}\n\n=== RELATÓRIO DA VIGILÂNCIA ===\n${relatorioVigilancia}\n\n=== CÓDIGO ATUAL (index.html) ===\n${codigoAtual || 'Vazio. Comece do zero.'}`;
 
-  const endpoint = new URL('https://googleapis.com');
-  endpoint.searchParams.set('key', apiKey.trim());
+  // Tenta primeiro o modelo Pro e, se nao disponivel na chave, usa o Flash automaticamente
+  const modelos = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'];
+  let textoGerado = '';
 
-  const resposta = await fetch(endpoint.toString(), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: promptFinal }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 65536 }
-    })
-  });
+  for (const modelo of modelos) {
+    console.log('Conectando ao modelo:', modelo);
+    const url = `https://googleapis.com{modelo}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    
+    const resposta = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: promptFinal }] }],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 65536 }
+      })
+    });
 
-  const dados = await resposta.json();
-  const primeiroCandidato = dados && dados.candidates ? dados.candidates.at(0) : null;
-  const primeiraParte = primeiroCandidato && primeiroCandidato.content && primeiroCandidato.content.parts ? primeiroCandidato.content.parts.at(0) : null;
+    const textoBruto = await resposta.text();
+    if (resposta.ok) {
+      const dados = JSON.parse(textoBruto);
+      textoGerado = dados?.candidates?.at(0)?.content?.parts?.at(0)?.text || '';
+      if (textoGerado) {
+        console.log('Sucesso com o modelo:', modelo);
+        break;
+      }
+    } else {
+      console.log(`Aviso no modelo ${modelo} (Status ${resposta.status}):`, textoBruto.slice(0, 300));
+    }
+  }
 
-  if (!primeiraParte || !primeiraParte.text) {
-    console.error('Erro na resposta da API:', JSON.stringify(dados));
+  if (!textoGerado) {
+    console.error('Nenhum modelo respondeu. Verifique sua GEMINI_API_KEY.');
     process.exit(1);
   }
 
-  let novoHtml = primeiraParte.text;
-  novoHtml = novoHtml.replace(/^```html\s*/i, '').replace(/```\s*$/i, '').trim();
+  let novoHtml = textoGerado.replace(/^```html\s*/i, '').replace(/```\s*$/i, '').trim();
 
   if (novoHtml.includes('<!DOCTYPE html>') && novoHtml.includes('</html>')) {
     fs.writeFileSync('index.html', novoHtml);
@@ -82,4 +95,4 @@ async function trabalhar() {
 }
 
 trabalhar();
-      
+  
